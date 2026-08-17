@@ -1,67 +1,120 @@
-# Görsel tabanlı ürün tanıma (bitirme projesi)
+# Görsel Tabanlı Ürün Tanıma Sistemi
 
-Görsel tabanlı ürün tanıma bitirme projesi — Streamlit arayüzü, YOLO + OCR ile ürün eşleştirme, SQLite veritabanı ve simüle sepet/ödeme akışı.
+YOLO ve OCR tabanlı hibrit ürün tanıma platformu. Kullanıcı bir ürün fotoğrafı yüklediğinde sistem görsel sınıflandırma, metin çıkarımı ve veritabanı eşleştirmesi yapar; tanınan ürün stokta ise otomatik sepete eklenir. Sepet yönetimi, simüle ödeme ve dijital fiş üretimi Streamlit arayüzü üzerinden sunulur.
 
-Modüller proje **kökünde** (`store.py`, `vision.py`). Arayüz Türkçe; `assets/` altında CSS ve HTML ayrı dosyalardır.
-
-**Gereksinim:** Windows'ta **Python 3.10 veya üzeri** önerilir. İlk çalıştırmada **internet** gerekir.
+**Teknolojiler:** Python · Streamlit · YOLO (Ultralytics) · EasyOCR · SQLite · scikit-learn · Hugging Face Transformers
 
 ---
 
-## Hoca / değerlendirici için çalıştırma
+## Ekip
 
-Projeyi **Türkçe karakter içermeyen** bir klasöre çıkarın (ör. `C:\projeler\gorsel-urun-tanima`), sonra:
+Bu proje **ortak geliştirme** olarak yürütülmüştür.
 
-### Yöntem 1 — Çift tık (Windows)
+| Geliştirici | Katkı alanı |
+|---|---|
+| **Aydın Candemiır** | Streamlit arayüzü, uygulama akışı, entegrasyon, dağıtım |
+| **Yiğit Duyu** | YOLO/OCR pipeline, NLP eşleştirme, model eğitimi ve değerlendirme |
+| **Kutay Necdet Şen** | SQLite veritabanı, iş mantığı, yetkilendirme, veri yönetimi |
+
+---
+
+## Özellikler
+
+- Ürün fotoğrafından otomatik tanıma (YOLO + OCR + metin eşleştirme)
+- OCR yazım hatalarına dayanıklı fuzzy eşleştirme
+- Sepet yönetimi, stok kontrolü ve simüle ödeme
+- Dijital fiş üretimi ve indirme
+- Rol tabanlı yönetim paneli (admin / müşteri)
+- Veri seti ve manifest yönetimi
+- Windows için tek tıkla kurulum (`calistir.bat`)
+
+---
+
+## Gereksinimler
+
+- **İşletim sistemi:** Windows (önerilir)
+- **Python:** 3.10 veya üzeri
+- **Ağ:** İlk kurulumda internet bağlantısı (bağımlılık indirimi)
+
+Projeyi Türkçe karakter içermeyen bir dizine klonlamanız önerilir (ör. `C:\projeler\gorsel-urun-tanima`).
+
+---
+
+## Kurulum ve Çalıştırma
+
+### GitHub'dan klonlama
+
+```bash
+git clone https://github.com/aydincan99/gorsel-urun-tanima.git
+cd gorsel-urun-tanima
+```
+
+### Yöntem 1 — Otomatik başlatma (Windows)
 
 1. `calistir.bat` dosyasına çift tıklayın.
-2. İlk seferde sanal ortam ve paketler kurulur; bitince tarayıcıda uygulama açılır.
-3. Açılmazsa tarayıcıda: **http://localhost:8501**
+2. İlk çalıştırmada sanal ortam (`.venv`) oluşturulur ve bağımlılıklar kurulur.
+3. Uygulama tarayıcıda açılır; açılmazsa: **http://localhost:8501**
 
-### Yöntem 2 — PowerShell veya VS Code terminali
+### Yöntem 2 — Manuel kurulum (PowerShell / terminal)
 
-```text
-cd C:\projeler\gorsel-urun-tanima
+```powershell
+cd gorsel-urun-tanima
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -U pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-PowerShell'de `Activate.ps1` çalışmazsa sorun değil; yukarıdaki gibi **doğrudan `.venv\Scripts\python.exe`** kullanın.
+PowerShell execution policy nedeniyle `Activate.ps1` çalışmazsa doğrudan `.venv\Scripts\python.exe` kullanın.
+
+---
 
 ## Demo hesaplar
 
-| Rol      | E-posta           | Şifre      |
-|----------|-------------------|------------|
-| Yönetici | `admin@demo.local`| `Admin123!`|
-| Müşteri  | `user@demo.local` | `User123!` |
+| Rol | E-posta | Şifre |
+|---|---|---|
+| Yönetici | `admin@demo.local` | `Admin123!` |
+| Müşteri | `user@demo.local` | `User123!` |
 
-İlk açılışta veritabanı (`data/processed/app.db`) yoksa uygulama oluşturur.
-
----
-
-Tez / rapor metni için: **`RAPOR.md`** — arayüz işlevleri, hangi dosyada hangi kod parçasının anlatılacağı ve satır aralıkları.
-
-## Kaynak dosyalar
-
-| Dosya | Rol |
-|--------|-----|
-| `calistir.bat` | Windows: ilk kurulum + Streamlit (cift tik) |
-| `streamlit_app.py` | Streamlit arayuzu (tum sayfalar) |
-| `store.py` | Yollar + SQLite (sema icinde) |
-| `vision.py` | YOLO, OCR, manifest, NLP, QR, eslestirme |
-| `assets/custom.css` | Stiller |
-| `assets/saat_widget.html` | Saat bileşeni |
-| `scripts/tools.py` | `build`, `train`, `eval-yolo`, … |
-| `test_store.py` | Kısa `pytest` |
-| `RAPOR.md` | Rapora kod + arayüz aktarımı (rehber) |
+İlk açılışta SQLite veritabanı (`data/processed/app.db`) otomatik oluşturulur.
 
 ---
 
-## Araçlar (model / veri seti)
+## Proje yapısı
 
-```text
+| Dosya / klasör | Açıklama |
+|---|---|
+| `streamlit_app.py` | Streamlit arayüzü (giriş, mağaza, yönetim, veri klasörleri) |
+| `vision.py` | YOLO, OCR, NLP, QR okuma ve ürün eşleştirme |
+| `store.py` | SQLite veritabanı, kimlik doğrulama, sipariş ve stok işlemleri |
+| `scripts/tools.py` | Veri seti oluşturma, model eğitimi, YOLO değerlendirme |
+| `calistir.bat` | Windows ortamında otomatik kurulum ve başlatma |
+| `assets/` | CSS ve HTML bileşenleri |
+| `data/` | Ham görseller, manifest ve işlenmiş veritabanı |
+| `models/exports/` | Eğitilmiş YOLO model dosyası (`yolov8_product.pt`) |
+| `RAPOR.md` | Teknik dokümantasyon ve rapor rehberi |
+
+---
+
+## Model eğitimi (isteğe bağlı)
+
+```powershell
 .\.venv\Scripts\python.exe scripts/tools.py build
 .\.venv\Scripts\python.exe scripts/tools.py train --epochs 40
 ```
+
+Eğitilmiş model mevcut değilse uygulama demo modunda çalışmaya devam eder.
+
+---
+
+## Test
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest test_store.py test_vision_match.py -q
+```
+
+---
+
+## Lisans
+
+Bu depo eğitim ve portfolyo amaçlıdır. Ticari kullanım için geliştirici ekiple iletişime geçin.
