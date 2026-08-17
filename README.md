@@ -1,8 +1,11 @@
 # Görsel tabanlı ürün tanıma (bitirme projesi)
 
-# modüller proje **kökünde** (`store.py`, `vision.py`). Arayüz Türkçe; `assets/` altında CSS ve HTML ayrı dosyalardır.
+Görsel tabanlı ürün tanıma bitirme projesi — Streamlit arayüzü, YOLO + OCR ile ürün eşleştirme, SQLite veritabanı ve simüle sepet/ödeme akışı.
 
-**Gereksinim:** Windows’ta **Python 3.10 veya üzeri** önerilir. İlk çalıştırmada **internet** gerekir 
+Modüller proje **kökünde** (`store.py`, `vision.py`). Arayüz Türkçe; `assets/` altında CSS ve HTML ayrı dosyalardır.
+
+**Gereksinim:** Windows'ta **Python 3.10 veya üzeri** önerilir. İlk çalıştırmada **internet** gerekir.
+
 ---
 
 ## Hoca / değerlendirici için çalıştırma
@@ -11,8 +14,8 @@ Projeyi **Türkçe karakter içermeyen** bir klasöre çıkarın (ör. `C:\proje
 
 ### Yöntem 1 — Çift tık (Windows)
 
-1. `calistir.bat` dosyasına çift tıklayın.  
-2. İlk seferde sanal ortam ve paketler kurulur; bitince tarayıcıda uygulama açılır.  
+1. `calistir.bat` dosyasına çift tıklayın.
+2. İlk seferde sanal ortam ve paketler kurulur; bitince tarayıcıda uygulama açılır.
 3. Açılmazsa tarayıcıda: **http://localhost:8501**
 
 ### Yöntem 2 — PowerShell veya VS Code terminali
@@ -25,7 +28,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-PowerShell’de `Activate.ps1` çalışmazsa sorun değil; yukarıdaki gibi **doğrudan `.venv\Scripts\python.exe`** kullanın.
+PowerShell'de `Activate.ps1` çalışmazsa sorun değil; yukarıdaki gibi **doğrudan `.venv\Scripts\python.exe`** kullanın.
 
 ## Demo hesaplar
 
