@@ -1,0 +1,11 @@
+{
+  "method": "prototype_centroid_cosine",
+  "backbone": "resnet18_imagenet",
+  "n_train": 2,
+  "n_val": 2,
+  "classes": [
+    "SKU-CC-330",
+    "SKU-FANTA"
+  ],
+  "val_accuracy": 1.0
+}

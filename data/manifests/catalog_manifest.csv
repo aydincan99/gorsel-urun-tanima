@@ -1,0 +1,4 @@
+image_path,label,view,modality
+images/yemek.jpg,gida,,visual_flat
+products/SKU-FANTA/on_fanta.jpg,SKU-FANTA,on,product_multi_view
+products/SKU-CC-330/on_coca_cola.jpg,SKU-CC-330,on,product_multi_view

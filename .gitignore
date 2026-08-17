@@ -1,0 +1,18 @@
+# Teslim zip: .venv ve cache klasorlerini arsive eklemeyin (README bakin)
+.venv/
+venv/
+.env
+.vs/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+data/processed/app.db
+
+# Gecici / tekrar uretilebilir (.git'e girmesin)
+experiments/yolo_cls_products/
+data/dataset_yolo_cls/*.cache
+yolov8n-cls.pt

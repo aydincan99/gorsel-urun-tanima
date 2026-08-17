@@ -1,0 +1,23 @@
+{
+  "n_samples": 4,
+  "n_classes": 2,
+  "class_names": [
+    "SKU-CC-330",
+    "SKU-FANTA"
+  ],
+  "cv_splits": 2,
+  "baseline_cv_accuracy_mean": 1.0,
+  "baseline_cv_accuracy_std": 0.0,
+  "random_search_best": {
+    "params": {
+      "lr__C": 0.1767016940294795
+    },
+    "accuracy": 1.0
+  },
+  "grid_search_best": {
+    "params": {
+      "lr__C": 0.01
+    },
+    "accuracy": 1.0
+  }
+}

@@ -1,0 +1,71 @@
+/*
+  Bitirme projesi — arayüz stilleri (ayrı dosya, teslim ve inceleme için).
+  streamlit_app.py bu dosyayı okuyup <style> ile enjekte eder.
+*/
+
+:root {
+  --koyu-metin: #1e293b;
+  --gri-arsiz: #64748b;
+  --vurgu: #2563eb;
+  --acik-kutu: #ffffff;
+  --hat-kure: #e2e8f0;
+  --golge: rgba(15, 23, 42, 0.06);
+}
+
+/* Ana gövde */
+.main .block-container {
+  padding-top: 0.75rem;
+  padding-bottom: 2.5rem;
+  max-width: 1080px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Başlıklar */
+h1 {
+  color: var(--koyu-metin);
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  font-size: 1.85rem;
+  margin-bottom: 0.35rem;
+}
+
+h2, h3 {
+  color: var(--koyu-metin);
+  font-weight: 600;
+}
+
+/* Kenarlıklı kutular (Streamlit container border) */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius: 10px;
+  box-shadow: 0 2px 8px var(--golge);
+  border-color: var(--hat-kure) !important;
+  background: var(--acik-kutu);
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+  font-size: 0.93rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+[data-testid="stSidebar"] a {
+  text-decoration: none;
+  color: var(--koyu-metin);
+}
+
+[data-testid="stSidebar"] a:hover {
+  color: var(--vurgu);
+}
+
+/* Form ve giriş alanları */
+.stTextInput input, .stTextArea textarea {
+  border-radius: 8px !important;
+}
+
+.stAlert {
+  border-radius: 10px !important;
+}
+
+[data-testid="stMetricValue"] {
+  color: var(--koyu-metin);
+}
