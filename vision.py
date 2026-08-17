@@ -277,8 +277,51 @@ def _norm_label(s: str) -> str:
     return s.strip().lower().replace(" ", "_").replace("-", "_")
 
 
+_OCR_BRAND_ALIASES: dict[str, tuple[str, ...]] = {
+    "fanta": ("fant", "fanta", "fantgazoz", "portakal"),
+    "coca_cola": ("coca", "cola", "cocacola", "cocacola330"),
+    "sprite": ("sprite", "limon"),
+    "ayran": ("ayran",),
+}
+
+
+def _ocr_word_tokens(text: str) -> list[str]:
+    return [t.lower() for t in re.findall(r"[A-Za-zÇçĞğİıÖöŞşÜü]{3,}", text or "")]
+
+
+def _brand_alias_hit(product_key: str, ocr_l: str, ocr_c: str, ocr_words: list[str]) -> int:
+    aliases = _OCR_BRAND_ALIASES.get(product_key, ())
+    best = 0
+    for alias in aliases:
+        al = alias.lower()
+        ac = _compact(al)
+        if len(al) >= 4 and al in ocr_l:
+            best = max(best, len(al))
+        if len(ac) >= 4 and ac in ocr_c:
+            best = max(best, len(ac))
+        for word in ocr_words:
+            if len(word) >= 4 and (word.startswith(al) or al.startswith(word)):
+                if abs(len(word) - len(al)) <= 2:
+                    best = max(best, min(len(word), len(al)))
+    return best
+
+
+def _token_matches_brand(token: str, field: str) -> bool:
+    token = token.strip().lower()
+    field = field.strip().lower()
+    if len(token) < 3 or len(field) < 3:
+        return False
+    if token in field or field in token:
+        return True
+    shorter, longer = (token, field) if len(token) <= len(field) else (field, token)
+    if len(shorter) >= 4 and longer.startswith(shorter):
+        return True
+    return False
+
+
 def _ocr_product_match(rows: list[sqlite3.Row], ocr_l: str, ocr_c: str) -> dict[str, Any] | None:
     best_score, best_row = 0, None
+    ocr_words = _ocr_word_tokens(ocr_l)
 
     def consider(row: sqlite3.Row, score: int) -> None:
         nonlocal best_score, best_row
@@ -292,14 +335,23 @@ def _ocr_product_match(rows: list[sqlite3.Row], ocr_l: str, ocr_c: str) -> dict[
                 continue
             vl, vc = v.lower(), _compact(v)
             if len(vl) >= 4 and vl in ocr_l:
-                consider(r, len(vl))
+                consider(r, len(vl) + 2)
             if len(vc) >= 4 and vc in ocr_c:
-                consider(r, len(vc))
+                consider(r, len(vc) + 2)
             for tok in re.split(r"\W+", vl):
                 t = tok.strip().lower()
-                if len(t) >= 4 and not t.isdigit() and t in ocr_l:
-                    consider(r, len(t))
-    if best_row == None:
+                if len(t) >= 3 and not t.isdigit():
+                    if t in ocr_l:
+                        consider(r, len(t) + 1)
+                    for word in ocr_words:
+                        if _token_matches_brand(word, t):
+                            consider(r, len(t) + 2)
+        hint = _norm_label(str(r["yolo_class_hint"] or ""))
+        if hint:
+            alias_score = _brand_alias_hit(hint, ocr_l, ocr_c, ocr_words)
+            if alias_score:
+                consider(r, alias_score + 4)
+    if best_row is None:
         return None
     if best_score < 4:
         return None
@@ -348,35 +400,45 @@ def _match_product(
     ocr_text: str,
     *,
     yolo_backend: str = "",
+    yolo_conf: float = 0.0,
     ner_hints: list[str],
 ) -> dict[str, Any] | None:
     rows = store.list_all()
     if len(rows) == 0:
         return None
     ocr_l = ocr_text.lower()
-    if ner_hints != None and len(ner_hints) > 0:
-        ocr_l = ocr_l + " "
-        ocr_l = ocr_l + " ".join([h.lower() for h in ner_hints])
+    if ner_hints:
+        ocr_l = ocr_l + " " + " ".join(h.lower() for h in ner_hints)
     ocr_c = _compact(ocr_text)
     y_l = _norm_label(yolo_label)
-    trained = yolo_backend == "yolov8_cls_custom" or yolo_backend == "yolov8_detect_custom"
+    trained = yolo_backend in ("yolov8_cls_custom", "yolov8_detect_custom")
 
-    m = _ocr_product_match(rows, ocr_l, ocr_c)
-    if m == None:
-        m = _sku_yolo_match(rows, y_l)
-    if m == None:
-        m = _hint_and_token_match(rows, y_l, ocr_l)
-    if m == None:
-        m = _tfidf_match(ocr_text, rows)
+    ocr_match = _ocr_product_match(rows, ocr_l, ocr_c)
+    yolo_match = _sku_yolo_match(rows, y_l) if trained else None
+    hint_match = _hint_and_token_match(rows, y_l, ocr_l)
+    tfidf_match = _tfidf_match(ocr_text, rows)
 
-    if trained == True:
-        return m
-    if m != None:
-        return m
+    if ocr_match and yolo_match and ocr_match.get("id") != yolo_match.get("id"):
+        # Dusuk guvenli YOLO, guclu OCR ipucunu ezmesin.
+        if yolo_conf < 0.68:
+            return ocr_match
+
+    if ocr_match:
+        return ocr_match
+    if trained and yolo_conf >= 0.68 and yolo_match:
+        return yolo_match
+    if hint_match:
+        return hint_match
+    if tfidf_match:
+        return tfidf_match
+    if trained and yolo_match:
+        return yolo_match
+
+    if trained:
+        return None
     h2 = hashlib.md5(y_l.encode()).hexdigest()
     idx2 = int(h2, 16) % len(rows)
-    secilen_satir = rows[idx2]
-    return store.row_to_dict(secilen_satir)
+    return store.row_to_dict(rows[idx2])
 
 
 def analyze_product_image(
@@ -391,7 +453,9 @@ def analyze_product_image(
     ocr_txt, ocr_cf, o_back = _ocr_easy(pil_image)
     toks = nltk_tokens(ocr_txt)
     ner = hf_entities(ocr_txt) or spacy_lemmas(ocr_txt)[:5]  # spacy opsiyonel, yoksa bos doner
-    matched = _match_product(y_label, ocr_txt, yolo_backend=y_back, ner_hints=ner)
+    matched = _match_product(
+        y_label, ocr_txt, yolo_backend=y_back, yolo_conf=y_conf, ner_hints=ner
+    )
     pid = matched["id"] if matched else None
     mongo_insert_doc(  # MONGO_URI yoksa zaten icinde return
         {

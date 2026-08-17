@@ -181,6 +181,7 @@ def init_db(with_demo_orders: bool = True) -> None:
     with _cx() as conn:
         conn.executescript(_SCHEMA)  # butun CREATEler tek seferde
         _seed_if_empty(conn)
+        _ensure_catalog_products(conn)
         if with_demo_orders:
             _ensure_demo_order_history(conn)
         conn.commit()
@@ -200,6 +201,7 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
         )
     for row in (
         ("SKU-CC-330", "Coca-Cola 330ml", 12.90, 48, 42.0, 10.6, 10.6, "coca_cola"),
+        ("SKU-FANTA", "Fanta Portakal 330ml", 11.90, 40, 45.0, 11.0, 11.0, "fanta"),
         ("SKU-SP-330", "Sprite 330ml", 11.50, 52, 39.0, 10.0, 9.0, "sprite"),
         ("SKU-AYRAN", "Ayran 250ml", 8.90, 30, 55.0, 4.5, 3.5, "ayran"),
     ):
@@ -213,6 +215,24 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
         "INSERT INTO admin_logs (kind, message, payload, created_at) VALUES ('system', ?, NULL, ?)",
         ("Veritabani ilk kurulum ve demo hesaplar olusturuldu.", now_tr_sqlite()),
     )
+
+
+def _ensure_catalog_products(conn: sqlite3.Connection) -> None:
+    """Eksik demo urunleri ekler (mevcut DB'ler icin)."""
+    for row in (
+        ("SKU-CC-330", "Coca-Cola 330ml", 12.90, 48, 42.0, 10.6, 10.6, "coca_cola"),
+        ("SKU-FANTA", "Fanta Portakal 330ml", 11.90, 40, 45.0, 11.0, 11.0, "fanta"),
+        ("SKU-SP-330", "Sprite 330ml", 11.50, 52, 39.0, 10.0, 9.0, "sprite"),
+        ("SKU-AYRAN", "Ayran 250ml", 8.90, 30, 55.0, 4.5, 3.5, "ayran"),
+    ):
+        if conn.execute("SELECT 1 FROM products WHERE sku = ?", (row[0],)).fetchone():
+            continue
+        conn.execute(
+            """INSERT INTO products
+            (sku, name, price, stock, cal_100ml, carbs_g_100ml, sugar_g_100ml, yolo_class_hint, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (*row, now_tr_sqlite()),
+        )
 
 
 def _ensure_demo_order_history(conn: sqlite3.Connection) -> None:
