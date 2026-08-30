@@ -1,7 +1,8 @@
-# Teslim zip: .venv ve cache klasorlerini arsive eklemeyin (README bakin)
 .venv/
 venv/
 .env
+.env.*
+!.env.example
 .vs/
 __pycache__/
 *.py[cod]
@@ -11,8 +12,14 @@ __pycache__/
 .ruff_cache/
 .ipynb_checkpoints/
 data/processed/app.db
+backups/
+*.pem
+*.key
+secrets/
+credentials.json
 
-# Gecici / tekrar uretilebilir (.git'e girmesin)
 experiments/yolo_cls_products/
 data/dataset_yolo_cls/*.cache
 yolov8n-cls.pt
+.DS_Store
+Thumbs.db

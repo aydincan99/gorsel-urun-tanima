@@ -14,6 +14,7 @@ import vision
 import store
 from store import ProjectPaths, format_tr_display
 from vision import analyze_product_image, read_text_ocr
+from hardening import configure_logging, public_error, sanitize_text, validate_upload
 
 _AUTH = "oturum"  # session_state keyleri — isimleri degistirme sonra bozulur
 _SEPET = "sepet"
@@ -137,7 +138,7 @@ def page_giris() -> None:
             with st.form("kayit_form"):
                 ad = st.text_input("Ad soyad", key="kad")
                 em = st.text_input("E-posta (kayıt)", key="kem")
-                pw = st.text_input("Şifre (en az 6 karakter)", type="password", key="kpw")
+                pw = st.text_input("Şifre (en az 8 karakter)", type="password", key="kpw")
                 kay_btn = st.form_submit_button("Kayıt ol", use_container_width=True)
             if kay_btn:
                 ok2, msg2 = store.register_user(em, pw, ad, as_admin=False)
@@ -148,6 +149,7 @@ def page_giris() -> None:
             st.markdown(
                 "| Rol | E-posta | Şifre |\n|-----|---------|--------|\n"
                 "| Yönetici | `admin@demo.local` | `Admin123!` |\n"
+                "| Personel | `staff@demo.local` | `Staff123!` |\n"
                 "| Müşteri | `user@demo.local` | `User123!` |"
             )
             st.info(
@@ -244,7 +246,11 @@ def page_magaza() -> None:  # en karisik sayfa burda (sepet+sidebar+foto)
         if st.session_state.get(_YUKLENEN_ANAHTAR) != dosya_anahtari:
             st.session_state[_YUKLENEN_ANAHTAR] = dosya_anahtari
             st.session_state.pop(_SEPET_IMZA, None)
-        pil = Image.open(yuklenen).convert("RGB")
+        try:
+            pil = validate_upload(yuklenen)
+        except Exception as exc:
+            st.error(public_error(exc))
+            return
         k1, k2 = st.columns([1, 1], gap="medium")
         with k1:
             st.image(pil, use_container_width=True)
@@ -321,8 +327,21 @@ def page_magaza() -> None:  # en karisik sayfa burda (sepet+sidebar+foto)
         )
 
 
+def page_hesabim() -> None:
+    kullanici = require_login()
+    baslik("Hesabım", "Hesabınızı kalıcı olarak silebilirsiniz.")
+    st.warning("Silme işlemi sipariş, tarama ve kullanıcı kaydını tamamen kaldırır.")
+    if st.button("Hesabımı kalıcı olarak sil", type="primary"):
+        store.delete_user_account(int(kullanici["id"]))
+        set_auth(None)
+        cart_clear()
+        st.success("Hesap silindi.")
+        st.rerun()
+
+
 def page_yonetim() -> None:  # admin ekrani — baya kod var
-    require_login(roller={"admin"})
+    kullanici = require_login(roller={"admin", "staff"})
+    sadece_admin = kullanici.get("role") == "admin"
     baslik("Yönetim paneli", "Özet, envanter, kayıtlar ve tanıma testi.")
     bag = store.get_connection()  # direkt baglandi manually
     try:
@@ -363,15 +382,21 @@ def page_yonetim() -> None:  # admin ekrani — baya kod var
                 if c3.button("-1 stok", key=f"eksilt{r['id']}"):
                     store.adjust_stock(int(r["id"]), -1)
                     st.rerun()
-                if c4.button("Sil", key=f"sil{r['id']}"):
+                if sadece_admin and c4.button("Sil", key=f"sil{r['id']}"):
                     store.delete_product(int(r["id"]))
                     store.admin_append("inventory", f"Ürün silindi id={r['id']}", None)
                     st.rerun()
+                elif not sadece_admin:
+                    c4.caption("Silme yetkisi yok")
         st.divider()
+        if not sadece_admin:
+            st.info("Yeni ürün ekleme yalnızca yöneticidedir.")
+            return
         st.subheader("Yeni ürün")
         with st.form("yeni_urun"):
             sku = st.text_input("SKU kodu")
             ad = st.text_input("Ürün adı")
+            sku, ad = sanitize_text(sku, 40), sanitize_text(ad, 80)
             fiyat = st.number_input("Fiyat (TL)", min_value=0.0, value=9.99)
             stok_adet = st.number_input("Stok", min_value=0, value=20)
             kalori = st.number_input("Kalori / 100 ml", value=40.0)
@@ -391,7 +416,7 @@ def page_yonetim() -> None:  # admin ekrani — baya kod var
                         st.success("Ürün kaydedildi.")
                         st.rerun()
                     except Exception as e:
-                        st.error(str(e))
+                        st.error(public_error(e))
                 else:
                     st.error("SKU ve ürün adı zorunlu.")
     with t3:
@@ -425,7 +450,11 @@ def page_yonetim() -> None:  # admin ekrani — baya kod var
             "Ürün fotoğrafı (yönetici testi)", type=["jpg", "jpeg", "png"], key="yonetici_test"
         )
         if test_dosya is not None:
-            pil_t = Image.open(test_dosya).convert("RGB")
+            try:
+                pil_t = validate_upload(test_dosya)
+            except Exception as exc:
+                st.error(public_error(exc))
+                return
             st.image(pil_t, use_container_width=True)
             with st.spinner("Analiz…"):
                 tst = analyze_product_image(pil_t, user_id=None, log_scan=True)
@@ -439,7 +468,7 @@ def page_yonetim() -> None:  # admin ekrani — baya kod var
 
 
 def page_veri_klasorleri() -> None:
-    require_login(roller={"admin"})
+    require_login(roller={"admin", "staff"})
     yollar = ProjectPaths.default()
     baslik("Veri klasörleri", f"Eğitim görselleri ve `{vision.MANIFEST_NAME}`.")
     tb_ozet, tb_sku, tb_qr, tb_duz, tb_man = st.tabs(
@@ -528,13 +557,14 @@ def page_veri_klasorleri() -> None:
 
 
 st.set_page_config(page_title="Görsel ürün tanıma", page_icon="🛒", layout="wide")  # basta olmali dediler
+configure_logging()
 setup_chrome()
 store.init_db()  # db yoksa kuruyo
 
 with st.sidebar:  # sayfa secimi
     sayfa = st.radio(
         "Sayfa",
-        ["Giriş", "Mağaza", "Yönetim", "Veri klasörleri"],
+        ["Giriş", "Mağaza", "Yönetim", "Veri klasörleri", "Hesabım"],
         label_visibility="visible",
     )
     kenar_cubugu_cikis()
@@ -545,5 +575,7 @@ elif sayfa == "Mağaza":
     page_magaza()
 elif sayfa == "Yönetim":
     page_yonetim()
+elif sayfa == "Hesabım":
+    page_hesabim()
 else:
     page_veri_klasorleri()

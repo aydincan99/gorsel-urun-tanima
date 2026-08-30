@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
+import shutil
 import secrets
 import sqlite3
 from contextlib import contextmanager
@@ -20,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     salt TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+    role TEXT NOT NULL CHECK (role IN ('user', 'staff', 'admin')),
     full_name TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now', '+3 hours'))
 );
@@ -163,8 +165,13 @@ def db_path() -> Path:
 
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path()), check_same_thread=False)
+    path = db_path()
+    conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
     return conn
 
 
@@ -179,12 +186,99 @@ def _cx() -> Iterator[sqlite3.Connection]:  # her seferde ac kapa, hizli degil a
 
 def init_db(with_demo_orders: bool = True) -> None:
     with _cx() as conn:
-        conn.executescript(_SCHEMA)  # butun CREATEler tek seferde
+        conn.executescript(_SCHEMA)
+        _migrate_roles(conn)
         _seed_if_empty(conn)
+        _ensure_staff_user(conn)
         _ensure_catalog_products(conn)
         if with_demo_orders:
             _ensure_demo_order_history(conn)
         conn.commit()
+    backup_db()
+
+
+def _migrate_roles(conn: sqlite3.Connection) -> None:
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    sql = (row["sql"] if row else "") or ""
+    if "staff" in sql:
+        return
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute(
+        """CREATE TABLE users_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'staff', 'admin')),
+            full_name TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now', '+3 hours'))
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO users_new (id, email, password_hash, salt, role, full_name, created_at)
+           SELECT id, email, password_hash, salt, role, full_name, created_at FROM users"""
+    )
+    conn.execute("DROP TABLE users")
+    conn.execute("ALTER TABLE users_new RENAME TO users")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
+def backup_db(keep: int = 14) -> Path | None:
+    src = db_path()
+    if not src.exists():
+        return None
+    dest_dir = ProjectPaths.default().root / "backups"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(_TR).strftime("%Y%m%d-%H%M%S")
+    dest = dest_dir / f"app-{stamp}.db"
+    shutil.copy2(src, dest)
+    old = sorted(dest_dir.glob("app-*.db"))
+    for extra in old[:-keep]:
+        extra.unlink(missing_ok=True)
+    return dest
+
+
+def spend_alert(user_id: int | None = None) -> str | None:
+    raw = os.environ.get("SPEND_ALERT_LIMIT", "0")
+    try:
+        limit = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if limit <= 0:
+        return None
+    month = datetime.now(_TR).strftime("%Y-%m")
+    with _cx() as conn:
+        if user_id is None:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(total),0) AS s FROM orders WHERE created_at LIKE ?",
+                (f"{month}%",),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(total),0) AS s FROM orders WHERE user_id = ? AND created_at LIKE ?",
+                (user_id, f"{month}%"),
+            ).fetchone()
+    total = float(row["s"] if row else 0)
+    if total >= limit:
+        return f"Aylık harcama eşiği aşıldı: {total:.2f} / {limit:.2f} TL"
+    return None
+
+
+def delete_user_account(user_id: int) -> None:
+    with _cx() as conn:
+        conn.execute(
+            "DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
+            (user_id,),
+        )
+        conn.execute("DELETE FROM orders WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM scan_logs WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+
+
+def get_user(user_id: int) -> sqlite3.Row | None:
+    with _cx() as conn:
+        return conn.execute("SELECT id, email, role, full_name FROM users WHERE id = ?", (user_id,)).fetchone()
 
 
 def _seed_if_empty(conn: sqlite3.Connection) -> None:
@@ -192,6 +286,7 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
         return
     for email, password, role, name in (
         ("admin@demo.local", "Admin123!", "admin", "Demo Yönetici"),
+        ("staff@demo.local", "Staff123!", "staff", "Demo Personel"),
         ("user@demo.local", "User123!", "user", "Demo Müşteri"),
     ):
         salt, ph = hash_password(password)
@@ -214,6 +309,16 @@ def _seed_if_empty(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO admin_logs (kind, message, payload, created_at) VALUES ('system', ?, NULL, ?)",
         ("Veritabani ilk kurulum ve demo hesaplar olusturuldu.", now_tr_sqlite()),
+    )
+
+
+def _ensure_staff_user(conn: sqlite3.Connection) -> None:
+    if conn.execute("SELECT 1 FROM users WHERE email = ?", ("staff@demo.local",)).fetchone():
+        return
+    salt, ph = hash_password("Staff123!")
+    conn.execute(
+        "INSERT INTO users (email, password_hash, salt, role, full_name, created_at) VALUES (?,?,?,?,?,?)",
+        ("staff@demo.local", ph, salt, "staff", "Demo Personel", now_tr_sqlite()),
     )
 
 
@@ -334,8 +439,8 @@ def register_user(
     email = email.strip().lower()
     if not email or "@" not in email:
         return False, "Geçerli bir e-posta girin."
-    if len(password) < 6:
-        return False, "Şifre en az 6 karakter olmalı."
+    if len(password) < 8:
+        return False, "Şifre en az 8 karakter olmalı."
     salt, ph = hash_password(password)
     role = "admin" if as_admin else "user"
     try:
@@ -351,7 +456,11 @@ def register_user(
 
 
 def login_user(email: str, password: str) -> tuple[bool, str, dict[str, Any] | None]:
+    from hardening import login_allowed, login_fail
+
     email = email.strip().lower()
+    if not login_allowed(email):
+        return False, "Çok fazla deneme. Lütfen sonra tekrar deneyin.", None
     with _cx() as conn:
         cur = conn.execute(
             "SELECT id, email, password_hash, salt, role, full_name FROM users WHERE email = ?",
@@ -359,8 +468,10 @@ def login_user(email: str, password: str) -> tuple[bool, str, dict[str, Any] | N
         )
         row = cur.fetchone()
     if row is None:
+        login_fail(email)
         return False, "E-posta veya şifre hatalı.", None
     if not verify_password(password, row["salt"], row["password_hash"]):
+        login_fail(email)
         return False, "E-posta veya şifre hatalı.", None
     return True, "Giriş başarılı.", {
         "id": row["id"],
@@ -522,7 +633,11 @@ def simulate_checkout(  # gercek odeme yok sadece stok dusuruyo
             "lines": receipt_lines,
             "total": round(total, 2),
         }
-        return True, f"Ödeme tamamlandı. Sipariş #{oid} — {round(total, 2)} TL (simülasyon)", receipt
+        uyari = spend_alert(user_id)
+        mesaj = f"Ödeme tamamlandı. Sipariş #{oid} — {round(total, 2)} TL (simülasyon)"
+        if uyari:
+            mesaj = f"{mesaj} {uyari}"
+        return True, mesaj, receipt
 
 
 def list_user_orders(user_id: int, limit: int = 25) -> list:
